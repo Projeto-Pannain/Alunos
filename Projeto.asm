@@ -57,6 +57,7 @@ ENDM
     MSG2 DB "Nota 1:$"
     MSG3 DB "Nota 2:$"
     MSG4 DB "Nota 3:$"
+    MGSERRO DB "Nota não válida, tente de novo (0-10)$"
 .CODE
 MAIN PROC
     MOV AX,@DATA
@@ -76,21 +77,24 @@ EDIT_NOME PROC
     ;saida na memoria, modificando o nome
     S_REG BX,CX,DX,DI
     PUSH AX
+        MOV BX,AX       ;endereço da linha
+    INIC_NOME:
+        LINHA
+        XOR DI,DI       ;endereço da coluna
+        MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
+        MOV AH,01
 
-    MOV BX,AX       ;endereço da linha
-    XOR DI,DI       ;endereço da coluna
-    MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
-    MOV AH,01
+        INP_NOME:INT 21h
+            CMP AL,13
+            JE END_INP_NOME
+            CMP AL, 30H ; caso seja zero é pra correcao do nome 
+            JE INIC_NOME 
+            MOV [BX][DI],AL
+            INC DI
+        LOOP INP_NOME   ;coleta os caracteres e guarda na matriz
 
-    INP_NOME:INT 21h
-        CMP AL,13
-        JE END_INP_NOME
-        MOV [BX][DI],AL
-        INC DI
-    LOOP INP_NOME   ;coleta os caracteres e guarda na matriz
-
-    END_INP_NOME:
-    MOV BYTE PTR [BX][DI],"$"  ;fim do nome
+        END_INP_NOME:
+        MOV BYTE PTR [BX][DI],"$"  ;fim do nome
 
     POP AX
     R_REG BX,CX,DX,DI
@@ -107,13 +111,12 @@ EDIT_NOTA PROC
     MOV DI,BX  ;offset da nota
     MOV BX, AX ;offset do aluno
     MOV CX,5
-    XOR DL,DL  ;valor a ser guardado
+    INIC_NOTA: XOR DL,DL  ;valor a ser guardado
 
     INP_NOTA:MOV AH,01
         INT 21h
         CMP AL,13
         JE END_INP_NOTA
-
         AND AL,0Fh
         XCHG DL,AL      ;permite a multiplicaçao da soma atual por 10 para incluir o prox digito no caso de nota 10
         MULT 10
@@ -123,7 +126,16 @@ EDIT_NOTA PROC
 
     LINHA
     END_INP_NOTA:
+    CMP DL, 10 
+    JA ERRO_NOTA 
     MOV BYTE PTR [BX][DI], DL  ;nn importa qual matriz, é especificado que é uma matriz DB
+
+    ERRO_NOTA: 
+        MOV AH, 09
+        LEA DX, MGSERRO 
+        INT 21H 
+        LINHA 
+        JMP INIC_NOTA 
 
     POP DI
     R_REG AX,BX,CX,DX
