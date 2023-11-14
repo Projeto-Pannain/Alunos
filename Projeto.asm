@@ -56,6 +56,7 @@ PRINT MACRO TEXT ;imprime texto em TEXT, nn sei se eh necessario
     POP AX
 ENDM
 CLR MACRO
+    LOCAL NEXT_LINE
     PUSH AX
     PUSH CX
     PUSH DX
@@ -83,9 +84,10 @@ ENDM
     MSG4 DB "Nota 3:$"
     MSG5 DB "Qual aluno? (digite o nome):$"
     MSG6 DB "Nenhum aluno possui esse nome.$"
-    MSG7 DB "Qual nota?", 10, 13,"$"
+    MSG7 DB "Qual nota?(1-3)", 10, 13,"$"
     MSG8 DB "Digite a nota:$"
-    TOPO DB 10,13,"NOME                |P1|P2|P3|MF",10,13,"$"
+    MSG9 DB 10,13,"ERRO", 10, 13,"$"
+    TOPO DB 10,13,"|NOME                |P1|P2|P3|MF|",10,13,"$"
     TEMP DB 19 DUP(?),'$'
     INIT DB 36 DUP(" "),"BOLETIM","$"
     OPC  DB "OPCOES:", 10, 13,"$"
@@ -104,9 +106,9 @@ MAIN PROC
     MOV AH,09
     LEA DX,INIT
     INT 21h
-    LINHA
 
     OPCS:
+        LINHA
         MOV AH,09
         LEA DX,OPC
         INT 21h
@@ -139,32 +141,23 @@ MAIN PROC
         JZ FIM
         CMP AL,31h
         JE OPC_TABELA
-            CMP AL,32h
-            JE OPC_IMP
-                LINHA
-                CALL CHEC_NOME
-                PRINT MSG1
-                CALL EDIT_NOME
-                PRINT MSG7
-                PUSH AX
-                MOV AH,01
-                INT 21h
-                SUB AL,29       ;transforma numero da prova em offset para o EDIT NOTA (1 para 20, 2 para 21 e 3 para 23)
-                MOV BX,AX
-                XOR BH,BH
-                POP AX
-                LINHA
-                PRINT MSG8
-                CALL EDIT_NOTA
-                CALL CALC_MEDIA
-                JMP FIM_OPCS
-            OPC_TABELA:
-                LINHA
-                CALL EDIT_TABELA
-                JMP FIM_OPCS
-            OPC_IMP:
-                LINHA
-                CALL IMP_TABELA
+        CMP AL,32h
+        JE OPC_IMP
+        CMP AL,33h
+        JE OPC_REEDIT
+            PRINT MSG9;so chega aqui se a pessoa nao digitar o valor entre 0 e 3
+            JMP OPCS
+        OPC_TABELA:
+            LINHA
+            CALL EDIT_TABELA
+            JMP FIM_OPCS
+        OPC_IMP:
+            LINHA
+            CALL IMP_TABELA
+            JMP FIM_OPCS
+        OPC_REEDIT:
+            CALL REEDIT_NOTA
+            JMP FIM_OPCS
         FIM_OPCS:
     JMP OPCS
 
@@ -303,6 +296,7 @@ IMP_TABELA PROC
 ; saida na tela 
     S_REG AX, BX, CX, DX 
 
+    CLR
     XOR BX, BX
 
     MOV AH, 09 
@@ -313,51 +307,62 @@ IMP_TABELA PROC
     MOV CH, 5
 
     EXTERN: 
-    XOR DI, DI
+        XOR DI, DI
 
-    ;ideia: nao colocar o $ no fim e sempre imprimir 19 caracteres para manter o mesmo espaço de txto
+        ;ideia: nao colocar o $ no fim e sempre imprimir 19 caracteres para manter o mesmo espaço de txto
 
-    MOV AH, 09 ; NOME
-    LEA DX, TABELA[BX][DI]
-    INT 21H 
+        MOV AH,02
+        MOV DL,"|"
+        INT 21h
 
-    MOV AH,02
-    MOV DL,20h ;imprime um espaço
-    INT 21h
+        MOV AH, 09 ; NOME
+        LEA DX, TABELA[BX][DI]
+        INT 21H 
 
-    MOV CL,4   ;imprime as 3 notas e a media
-    MOV DI,20  ;primeira nota
-        INTER: 
-            MOV DL, ' '
-            INT 21H 
+        MOV AH,02
+        MOV DL,20h ;imprime um espaço
+        INT 21h
 
-            MOV AH, 02 ; NOTA 
-            MOV DL, TABELA[BX][DI]
-            CMP DL,10
-            JNE NOT_TEN
+        MOV CL,4   ;imprime as 3 notas e a media
+        MOV DI,20  ;primeira nota
+            INTER: 
+                MOV DL, '|'
+                INT 21H 
 
-            ADD DL,27h ;imprime o 1
-            INT 21h
-            MOV DL,30h ;imprime o 0
-            INT 21h
-            JMP CONTINUE_INTER
+                MOV AH, 02 ; NOTA 
+                MOV DL, TABELA[BX][DI]
+                CMP DL,10
+                JNE NOT_TEN
 
-            NOT_TEN:
-            PUSH DX
-                MOV DL," "
+                ADD DL,27h ;imprime o 1
                 INT 21h
-            POP DX
-            OR DL, 30H 
-            INT 21H 
+                MOV DL,30h ;imprime o 0
+                INT 21h
+                JMP CONTINUE_INTER
 
-            CONTINUE_INTER:
+                NOT_TEN:
+                PUSH DX
+                    MOV DL," "
+                    INT 21h
+                POP DX
+                OR DL, 30H 
+                INT 21H 
 
-            INC DI 
-            DEC CL 
-        JNZ INTER 
+                CONTINUE_INTER:
 
-    ADD BX, 24 
-    LINHA 
+                INC DI 
+                DEC CL 
+            JNZ INTER 
+
+        ADD BX, 24 
+        PUSH AX
+        PUSH DX
+        MOV AH,02
+        MOV DL,"|"
+        INT 21h
+        POP DX
+        POP AX
+        LINHA 
     DEC CH 
     JNZ EXTERN 
     
@@ -398,6 +403,7 @@ CHEC_NOME PROC
     ;saida em AX, offset do nome igual, retorna FFFFh se nao for igual a nenhum
     S_REG CX,DX,SI,DI
 
+    START_CHEC_NOME:
     MOV AH,09
     LEA DX,MSG5
     INT 21h
@@ -422,19 +428,51 @@ CHEC_NOME PROC
     DEC DL
     JNZ SEARCH
     
-    MOV AX,0FFFFh  ;se chegou aqui, nenhum é igual
-    PRINT MSG6
-    LINHA
-    JMP NAO_ENCONTRADO
+    PRINT MSG6      ;se chegou aqui, nao tem o nome, recomeça procedimento
+    CALL IMP_TABELA ;imprime tabela para a pessoa saber quais nomes tem
+    JMP START_CHEC_NOME
 
     ENCONTRADO:
     POP DI
     POP SI          ;esses dois estao aqui para o nao dar problema com o RET
     MOV AX,SI
-    NAO_ENCONTRADO: ;usar um CMP para verificar se ax é FFFFh na hora de usar o endereço
 
     R_REG CX,DX,SI,DI
     RET
 CHEC_NOME ENDP
+
+REEDIT_NOTA PROC
+    ;permite a reedicao da nota de um aluno
+    ;entrada pleo teclado
+    ;saida na memoria
+    S_REG AX,BX,CX,DX
+
+    ERROR_REEDIT:
+    LINHA
+    CALL CHEC_NOME
+    PRINT MSG1
+    CALL EDIT_NOME  ;modifica o nome do aluno
+    PRINT MSG7
+    PUSH AX
+    MOV AH,01
+    INT 21h
+
+    CMP AL,33h
+    JG ERROR_REEDIT
+    CMP AL,30h
+    JL ERROR_REEDIT ;verifica se a resposta foi viavel
+
+    SUB AL,29       ;transforma numero da prova em offset para o EDIT NOTA (31h para 14h, 32h para 15h e 33h para 16h)
+    MOV BX,AX
+    XOR BH,BH       ;guarda offset da nota em BX para usar EDIT_NOTA
+    POP AX
+    LINHA
+    PRINT MSG8
+    CALL EDIT_NOTA
+    CALL CALC_MEDIA
+
+    R_REG AX,BX,CX,DX
+    RET
+REEDIT_NOTA ENDP
 
 END MAIN
