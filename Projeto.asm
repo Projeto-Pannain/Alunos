@@ -27,11 +27,20 @@ LINHA MACRO
     POP DX 
     POP AX 
 ENDM 
-MULT MACRO XL ;multiplica AX por XL
+MULT MACRO XL ;multiplica AL por XL
     PUSH BX
 
     MOV BL,XL
     MUL BL
+
+    POP BX
+ENDM
+DIVI MACRO XL ;divide AL por XL
+    PUSH BX
+
+        MOV BL,10
+        CBW
+        DIV BL
 
     POP BX
 ENDM
@@ -46,24 +55,46 @@ PRINT MACRO TEXT ;imprime texto em TEXT, nn sei se eh necessario
     POP DX
     POP AX
 ENDM
+CLR MACRO
+    PUSH AX
+    PUSH CX
+    PUSH DX
+
+    MOV CX,24
+    MOV AH,02
+    MOV DL,10
+    NEXT_LINE:INT 21h
+    LOOP NEXT_LINE
+
+    POP DX
+    POP CX
+    POP AX
+ENDM
 
 .DATA
-    TABELA DB 20 DUP('$'),4 DUP(?) ;20 bytes para nome, 4 para notas e media
-           DB 20 DUP('$'),4 DUP(?)
-           DB 20 DUP('$'),4 DUP(?)
-           DB 20 DUP('$'),4 DUP(?)
-           DB 20 DUP('$'),4 DUP(?)
+    TABELA DB 19 DUP(?),'$',4 DUP(?) ;20 bytes para nome, 4 para notas e media
+           DB 19 DUP(?),'$',4 DUP(?)
+           DB 19 DUP(?),'$',4 DUP(?)
+           DB 19 DUP(?),'$',4 DUP(?)
+           DB 19 DUP(?),'$',4 DUP(?)
     MSG1 DB "Nome:$"
     MSG2 DB "Nota 1:$"
     MSG3 DB "Nota 2:$"
     MSG4 DB "Nota 3:$"
-    MGSERRO DB "Nota não válida, tente de novo (0-10)$"
+    MSG5 DB "Qual aluno? (digite o nome):$"
+    MSG6 DB "Nenhum aluno possui esse nome.$"
+    TEMP DB 19 DUP(?),'$'
 .CODE
 MAIN PROC
     MOV AX,@DATA
     MOV DS,AX
+    MOV ES,AX
+
+    CLR
 
     CALL EDIT_TABELA
+
+    CALL CHEC_NOME
 
     CALL IMP_TABELA 
 
@@ -75,29 +106,32 @@ EDIT_NOME PROC
     ;modifica o nome escolhido
     ;entrada em AX, offset do nome
     ;saida na memoria, modificando o nome
-    S_REG BX,CX,DX,DI
-    PUSH AX
-        MOV BX,AX       ;endereço da linha
-    INIC_NOME:
-        LINHA
-        XOR DI,DI       ;endereço da coluna
-        MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
-        MOV AH,01
+    S_REG AX,CX,DX,DI
 
-        INP_NOME:INT 21h
-            CMP AL,13
-            JE END_INP_NOME
-            CMP AL, 30H ; caso seja zero é pra correcao do nome 
-            JE INIC_NOME 
-            MOV [BX][DI],AL
-            INC DI
-        LOOP INP_NOME   ;coleta os caracteres e guarda na matriz
+    MOV DI,AX       ;offset do nome
+    MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
+    CLD
+    MOV AH,01
+    INT 21H
 
-        END_INP_NOME:
-        MOV BYTE PTR [BX][DI],"$"  ;fim do nome
+    INP_NOME:
+        CMP AL,0Dh
+        JE END_INP_NOME
 
-    POP AX
-    R_REG BX,CX,DX,DI
+        CMP AL,8h       ;backspace
+        JNE NOT_DELETE
+            DEC DI
+            INC CX
+        JMP NEXT_INP_NOME
+
+        NOT_DELETE:
+            STOSB
+        NEXT_INP_NOME:
+        INT 21h
+    LOOP INP_NOME
+    END_INP_NOME:
+
+    R_REG AX,CX,DX,DI
     RET
 EDIT_NOME ENDP
 
@@ -111,12 +145,22 @@ EDIT_NOTA PROC
     MOV DI,BX  ;offset da nota
     MOV BX, AX ;offset do aluno
     MOV CX,5
-    INIC_NOTA: XOR DL,DL  ;valor a ser guardado
+    XOR DL,DL  ;valor a ser guardado
 
     INP_NOTA:MOV AH,01
         INT 21h
         CMP AL,13
         JE END_INP_NOTA
+
+        CMP AL,8
+        JNE NOT_DEL
+            INC CX
+            MOV AL,DL
+            DIVI 10
+            MOV DL,AL
+        JMP INP_NOTA
+
+        NOT_DEL:
         AND AL,0Fh
         XCHG DL,AL      ;permite a multiplicaçao da soma atual por 10 para incluir o prox digito no caso de nota 10
         MULT 10
@@ -126,16 +170,7 @@ EDIT_NOTA PROC
 
     LINHA
     END_INP_NOTA:
-    CMP DL, 10 
-    JA ERRO_NOTA 
     MOV BYTE PTR [BX][DI], DL  ;nn importa qual matriz, é especificado que é uma matriz DB
-
-    ERRO_NOTA: 
-        MOV AH, 09
-        LEA DX, MGSERRO 
-        INT 21H 
-        LINHA 
-        JMP INIC_NOTA 
 
     POP DI
     R_REG AX,BX,CX,DX
@@ -149,9 +184,9 @@ EDIT_TABELA PROC
     S_REG AX,BX,CX,DX
     PUSH SI
 
-    MOV CX,5      ;loop externo
-    
-    XOR AX,AX     ;offset do aluno
+    MOV CX,1      ;loop externo
+    ;;;as linhas abaixo e acima devem ser MOV CX,5 e LEA AX,TABELA, se estao diferentes, é um teste
+    MOV AX,48     ;offset do aluno
 
     INP_TABELA:
         MOV DL,3      ;loop interno
@@ -273,5 +308,50 @@ CALC_MEDIA PROC
     R_REG SI, BX, CX, DX  
     RET
 CALC_MEDIA ENDP 
+
+CHEC_NOME PROC
+    ;checa se o nome inputado esta na tabela
+    ;entrada pelo teclado
+    ;saida em AX, offset do nome igual, retorna FFFFh se nao for igual a nenhum
+    S_REG CX,DX,SI,DI
+
+    MOV AH,09
+    LEA DX,MSG5
+    INT 21h
+
+    LEA AX,TEMP
+    CALL EDIT_NOME;pega nome para comparar
+
+    LEA SI,TABELA ;primeiro nome
+    LEA DI,TEMP   ;nome para ser comparado
+    MOV DL, 5     ;para comparar com todos os nomes
+
+    SEARCH:
+        PUSH SI
+        PUSH DI
+        MOV CX,19
+        REPE CMPSB ;enquanto forem iguais os caracteres, é scanneado
+        OR CX,CX
+        JZ ENCONTRADO
+        POP DI
+        POP SI
+        ADD SI,24  ;prox nome
+    DEC DL
+    JNZ SEARCH
+    
+    MOV AX,0FFFFh  ;se chegou aqui, nenhum é igual
+    PRINT MSG6
+    LINHA
+    JMP NAO_ENCONTRADO
+
+    ENCONTRADO:
+    POP DI
+    POP SI          ;esses dois estao aqui para o nao dar problema com o RET
+    MOV AX,SI
+    NAO_ENCONTRADO: ;usar um CMP para verificar se ax é FFFFh na hora de usar o endereço
+
+    R_REG CX,DX,SI,DI
+    RET
+CHEC_NOME ENDP
 
 END MAIN
