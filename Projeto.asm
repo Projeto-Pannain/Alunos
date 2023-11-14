@@ -83,21 +83,92 @@ ENDM
     MSG4 DB "Nota 3:$"
     MSG5 DB "Qual aluno? (digite o nome):$"
     MSG6 DB "Nenhum aluno possui esse nome.$"
+    MSG7 DB "Qual nota?", 10, 13,"$"
+    MSG8 DB "Digite a nota:$"
+    TOPO DB 10,13,"NOME                |P1|P2|P3|MF",10,13,"$"
     TEMP DB 19 DUP(?),'$'
+    INIT DB 36 DUP(" "),"BOLETIM","$"
+    OPC  DB "OPCOES:", 10, 13,"$"
+    OPC0 DB "0) FECHAR PROGRAMA", 10, 13,"$"
+    OPC1 DB "1) ENTRAR NOMES E NOTAS", 10, 13,"$"
+    OPC2 DB "2) IMPRIMIR NOMES E NOTAS", 10, 13,"$"
+    OPC3 DB "3) EDITAR NOME E NOTA", 10, 13,"$"
 .CODE
 MAIN PROC
     MOV AX,@DATA
     MOV DS,AX
     MOV ES,AX
 
-    CLR
+    CLR     ;limpa tela
 
-    CALL EDIT_TABELA
+    MOV AH,09
+    LEA DX,INIT
+    INT 21h
+    LINHA
 
-    CALL CHEC_NOME
+    OPCS:
+        MOV AH,09
+        LEA DX,OPC
+        INT 21h
 
-    CALL IMP_TABELA 
+        MOV AH,09
+        LEA DX,OPC0
+        INT 21h
 
+        MOV AH,09
+        LEA DX,OPC1
+        INT 21h
+
+        MOV AH,09
+        LEA DX,OPC2
+        INT 21h
+
+        MOV AH,09
+        LEA DX,OPC3
+        INT 21h
+        LINHA
+
+        MOV AH,02
+        MOV DL,"?"
+        INT 21h
+
+        MOV AH,01
+        INT 21H
+
+        CMP AL,30h
+        JZ FIM
+        CMP AL,31h
+        JE OPC_TABELA
+            CMP AL,32h
+            JE OPC_IMP
+                LINHA
+                CALL CHEC_NOME
+                PRINT MSG1
+                CALL EDIT_NOME
+                PRINT MSG7
+                PUSH AX
+                MOV AH,01
+                INT 21h
+                SUB AL,29       ;transforma numero da prova em offset para o EDIT NOTA (1 para 20, 2 para 21 e 3 para 23)
+                MOV BX,AX
+                XOR BH,BH
+                POP AX
+                LINHA
+                PRINT MSG8
+                CALL EDIT_NOTA
+                CALL CALC_MEDIA
+                JMP FIM_OPCS
+            OPC_TABELA:
+                LINHA
+                CALL EDIT_TABELA
+                JMP FIM_OPCS
+            OPC_IMP:
+                LINHA
+                CALL IMP_TABELA
+        FIM_OPCS:
+    JMP OPCS
+
+    FIM:
     MOV AH,4Ch
     INT 21h
 MAIN ENDP
@@ -184,9 +255,9 @@ EDIT_TABELA PROC
     S_REG AX,BX,CX,DX
     PUSH SI
 
-    MOV CX,1      ;loop externo
+    MOV CX,5      ;loop externo
     ;;;as linhas abaixo e acima devem ser MOV CX,5 e LEA AX,TABELA, se estao diferentes, é um teste
-    MOV AX,48     ;offset do aluno
+    LEA AX,TABELA;offset do aluno
 
     INP_TABELA:
         MOV DL,3      ;loop interno
@@ -234,6 +305,10 @@ IMP_TABELA PROC
 
     XOR BX, BX
 
+    MOV AH, 09 
+    LEA DX,TOPO
+    INT 21h
+
     ; impressao tabela inputada 
     MOV CH, 5
 
@@ -242,7 +317,7 @@ IMP_TABELA PROC
 
     ;ideia: nao colocar o $ no fim e sempre imprimir 19 caracteres para manter o mesmo espaço de txto
 
-    MOV AH, 09 ; NOME 
+    MOV AH, 09 ; NOME
     LEA DX, TABELA[BX][DI]
     INT 21H 
 
@@ -263,11 +338,19 @@ IMP_TABELA PROC
 
             ADD DL,27h ;imprime o 1
             INT 21h
-            XOR DL,DL  ;imprime o 0
+            MOV DL,30h ;imprime o 0
+            INT 21h
+            JMP CONTINUE_INTER
 
             NOT_TEN:
+            PUSH DX
+                MOV DL," "
+                INT 21h
+            POP DX
             OR DL, 30H 
             INT 21H 
+
+            CONTINUE_INTER:
 
             INC DI 
             DEC CL 
