@@ -173,7 +173,7 @@ EDIT_NOME PROC
     S_REG AX,CX,DX,DI
 
     MOV DI,AX       ;offset do nome
-    MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
+    MOV CX,18       ;max de caracteres (tem que ser 18 para o vigesimo ser "$", mesmo se a pessoa digitar o maximo possivel)
     CLD
     MOV AH,01
     INT 21H
@@ -190,9 +190,15 @@ EDIT_NOME PROC
 
         NOT_DELETE:
             STOSB
+        
         NEXT_INP_NOME:
         INT 21h
     LOOP INP_NOME
+        CMP AL,0Dh
+        JE END_INP_NOME
+    STOSB
+    LINHA
+
     END_INP_NOME:
 
     R_REG AX,CX,DX,DI
