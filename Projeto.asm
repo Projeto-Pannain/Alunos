@@ -84,7 +84,7 @@ ENDM
     MSG4 DB "Nota 3:$"
     MSG5 DB "Qual aluno? (digite o nome):$"
     MSG6 DB "Nenhum aluno possui esse nome.$"
-    MSG7 DB "Qual nota?(1-3)", 10, 13,"$"
+    MSG7 DB "Nota de qual prova?(1-3)", 10, 13,"$"
     MSG8 DB "Digite a nota:$"
     MSG9 DB 10,13,"ERRO", 10, 13,"$"
     TOPO DB 10,13,"|NOME                |P1|P2|P3|MF|",10,13,"$"
@@ -100,6 +100,10 @@ MAIN PROC
     MOV AX,@DATA
     MOV DS,AX
     MOV ES,AX
+
+    ;Setar modo de video 3 (80x25 modo texto)
+    MOV AX,0003h
+    INT 10h
 
     CLR     ;limpa tela
 
@@ -159,7 +163,7 @@ MAIN PROC
             CALL REEDIT_NOTA
             JMP FIM_OPCS
         FIM_OPCS:
-    JMP OPCS
+    JMP OPCS    ;loop do menu, so acaba se a opcao 0 foi escolhida
 
     FIM:
     MOV AH,4Ch
@@ -315,7 +319,7 @@ IMP_TABELA PROC
     EXTERN: 
         XOR DI, DI
 
-        ;ideia: nao colocar o $ no fim e sempre imprimir 19 caracteres para manter o mesmo espaço de txto
+        ;nao eh colocado o $ no fim para manter o mesmo espaço de txto, ja que o vigesimo caracter eh um $
 
         MOV AH,02
         MOV DL,"|"
@@ -335,11 +339,13 @@ IMP_TABELA PROC
                 MOV DL, '|'
                 INT 21H 
 
-                MOV AH, 02 ; NOTA 
                 MOV DL, TABELA[BX][DI]
+                CALL COR_NOTA
+
                 CMP DL,10
                 JNE NOT_TEN
 
+                MOV AH, 02
                 ADD DL,27h ;imprime o 1
                 INT 21h
                 MOV DL,30h ;imprime o 0
@@ -480,5 +486,28 @@ REEDIT_NOTA PROC
     R_REG AX,BX,CX,DX
     RET
 REEDIT_NOTA ENDP
+
+COR_NOTA PROC
+    ;decide se eh para colorir a nota de verde, vermelho ou nao colore, usado em IMP TABELA
+    ;entrada em DL
+    ;saida na cor dos 2 proximos caracteres
+    S_REG AX,BX,CX,DX
+
+    MOV AH,09     ;Escolher cor do texto
+    MOV AL,0      ;caracter a imprimir (sera substituido entao nao importa nesse caso)
+    MOV CX,2      ;numero de caracters a serem coloridos
+
+    CMP DL,5
+    JB ABAIXO_MEDIA
+    mov bl,2     ;verde se aprovado
+    JMP COLORE
+    ABAIXO_MEDIA:
+    mov bl,0Ch   ;vermelho-claro se reprovado
+    COLORE:INT 10h
+    NAO_COLORE:
+
+    R_REG AX,BX,CX,DX
+    RET
+COR_NOTA ENDP
 
 END MAIN
