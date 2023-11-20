@@ -106,7 +106,7 @@ ENDM
     OPC2 DB "2) IMPRIMIR NOMES E NOTAS", 10, 13,"$"
     OPC3 DB "3) EDITAR NOME E NOTA", 10, 13,"$"
 
-    MSG16 DB 10,13, "Tabela nao preenchida, favor preencher antes de editar"
+    MSG16 DB 10,13, "Tabela nao preenchida, favor preencher antes de editar$"
 
     PESOS DB ?,?,?
 .CODE
@@ -131,19 +131,15 @@ MAIN PROC
         LEA DX,OPC ; inicio menu "opcoes"
         INT 21h
 
-        MOV AH,09
         LEA DX,OPC0 ; opc 0 sai do loop
         INT 21h
 
-        MOV AH,09
         LEA DX,OPC1 ; opc entrar nome e notas 
         INT 21h
 
-        MOV AH,09
         LEA DX,OPC2 ; opc imprimir nome e nota 
         INT 21h
 
-        MOV AH,09
         LEA DX,OPC3 ; opc editar nome e nota
         INT 21h
         LINHA
@@ -156,7 +152,7 @@ MAIN PROC
         INT 21H
 
         CMP AL,30h
-        JZ FIM
+        JE FIM
         CMP AL,31h
         JE OPC_TABELA
         CMP AL,32h
@@ -176,11 +172,14 @@ MAIN PROC
             JMP FIM_OPCS
         OPC_REEDIT:
             OR CL,CL
-            JE TAB_NAO
+            JNZ TAB_SIM
+            PRINT MSG16
+            JMP TAB_NAO
+
+            TAB_SIM:
             CALL REEDIT_NOTA
+            
             TAB_NAO:
-            LEA DX, MSG16 
-            JMP FIM_OPCS
         FIM_OPCS:
     JMP OPCS    ;loop do menu, so acaba se a opcao 0 foi escolhida
 
