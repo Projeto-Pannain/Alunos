@@ -1,3 +1,5 @@
+;RAFAEL RAMOS DE AGUIAR /RA:23001236
+;LUIZA CAISSUTTI LOPES  /RA:23013823
 .MODEL SMALL
 .STACK 100h
 S_REG MACRO WX,XX,YX,ZX
@@ -56,6 +58,7 @@ PRINT MACRO TEXT ;imprime texto em TEXT, nn sei se eh necessario
     POP AX
 ENDM
 CLR MACRO
+    LOCAL NEXT_LINE
     PUSH AX
     PUSH CX
     PUSH DX
@@ -83,48 +86,65 @@ ENDM
     MSG4 DB "Nota 3:$"
     MSG5 DB "Qual aluno? (digite o nome):$"
     MSG6 DB "Nenhum aluno possui esse nome.$"
-    MSG7 DB "Qual nota?", 10, 13,"$"
+    MSG7 DB "Nota de qual prova?(1-3)", 10, 13,"$"
     MSG8 DB "Digite a nota:$"
-    TOPO DB 10,13,"NOME                |P1|P2|P3|MF",10,13,"$"
+    MSG9 DB 10,13,"ERRO", 10, 13,"$"
+    MSG10 DB "Nota insdisponivel(0-10):$"
+    MSG11 DB "Qual o peso das provas?",10,13,"$"
+    MSG12 DB "1:$"
+    MSG13 DB "2:$"
+    MSG14 DB "3:$"
+
+    MSG15 DB "PESOS: ",?,", ",?,", ",?,".$"
+    TOPO DB 10,13,"|NOME                |P1|P2|P3|MP|",10,13,"$"
     TEMP DB 19 DUP(?),'$'
     INIT DB 36 DUP(" "),"BOLETIM","$"
+
     OPC  DB "OPCOES:", 10, 13,"$"
     OPC0 DB "0) FECHAR PROGRAMA", 10, 13,"$"
     OPC1 DB "1) ENTRAR NOMES E NOTAS", 10, 13,"$"
     OPC2 DB "2) IMPRIMIR NOMES E NOTAS", 10, 13,"$"
     OPC3 DB "3) EDITAR NOME E NOTA", 10, 13,"$"
+
+    MSG16 DB 10,13, "Tabela nao preenchida, favor preencher antes de editar"
+
+    PESOS DB ?,?,?
 .CODE
 MAIN PROC
     MOV AX,@DATA
     MOV DS,AX
     MOV ES,AX
 
+    ;Setar modo de video 3 (80x25 modo texto)
+    MOV AX,0003h
+    INT 10h
+
     CLR     ;limpa tela
 
     MOV AH,09
     LEA DX,INIT
     INT 21h
-    LINHA
 
     OPCS:
+        LINHA
         MOV AH,09
-        LEA DX,OPC
+        LEA DX,OPC ; inicio menu "opcoes"
         INT 21h
 
         MOV AH,09
-        LEA DX,OPC0
+        LEA DX,OPC0 ; opc 0 sai do loop
         INT 21h
 
         MOV AH,09
-        LEA DX,OPC1
+        LEA DX,OPC1 ; opc entrar nome e notas 
         INT 21h
 
         MOV AH,09
-        LEA DX,OPC2
+        LEA DX,OPC2 ; opc imprimir nome e nota 
         INT 21h
 
         MOV AH,09
-        LEA DX,OPC3
+        LEA DX,OPC3 ; opc editar nome e nota
         INT 21h
         LINHA
 
@@ -139,34 +159,30 @@ MAIN PROC
         JZ FIM
         CMP AL,31h
         JE OPC_TABELA
-            CMP AL,32h
-            JE OPC_IMP
-                LINHA
-                CALL CHEC_NOME
-                PRINT MSG1
-                CALL EDIT_NOME
-                PRINT MSG7
-                PUSH AX
-                MOV AH,01
-                INT 21h
-                SUB AL,29       ;transforma numero da prova em offset para o EDIT NOTA (1 para 20, 2 para 21 e 3 para 23)
-                MOV BX,AX
-                XOR BH,BH
-                POP AX
-                LINHA
-                PRINT MSG8
-                CALL EDIT_NOTA
-                CALL CALC_MEDIA
-                JMP FIM_OPCS
-            OPC_TABELA:
-                LINHA
-                CALL EDIT_TABELA
-                JMP FIM_OPCS
-            OPC_IMP:
-                LINHA
-                CALL IMP_TABELA
+        CMP AL,32h
+        JE OPC_IMP
+        CMP AL,33h
+        JE OPC_REEDIT
+            PRINT MSG9;so chega aqui se a pessoa nao digitar o valor entre 0 e 3
+            JMP OPCS
+        OPC_TABELA:
+            LINHA
+            CALL EDIT_TABELA
+            INC CL ; contador para verificar se a tabela foi feita pelo menos uma vez p poder editar a tabela 
+            JMP FIM_OPCS
+        OPC_IMP:
+            LINHA
+            CALL IMP_TABELA
+            JMP FIM_OPCS
+        OPC_REEDIT:
+            OR CL,CL
+            JE TAB_NAO
+            CALL REEDIT_NOTA
+            TAB_NAO:
+            LEA DX, MSG16 
+            JMP FIM_OPCS
         FIM_OPCS:
-    JMP OPCS
+    JMP OPCS    ;loop do menu, so acaba se a opcao 0 foi escolhida
 
     FIM:
     MOV AH,4Ch
@@ -180,7 +196,7 @@ EDIT_NOME PROC
     S_REG AX,CX,DX,DI
 
     MOV DI,AX       ;offset do nome
-    MOV CX,19       ;max de caracteres (tem que ser 19 para o vigesimo ser "$")
+    MOV CX,18       ;max de caracteres (tem que ser 18 para o vigesimo ser "$", mesmo se a pessoa digitar o maximo possivel)
     CLD
     MOV AH,01
     INT 21H
@@ -197,9 +213,15 @@ EDIT_NOME PROC
 
         NOT_DELETE:
             STOSB
+        
         NEXT_INP_NOME:
         INT 21h
     LOOP INP_NOME
+        CMP AL,0Dh
+        JE END_INP_NOME
+    STOSB
+    LINHA
+
     END_INP_NOME:
 
     R_REG AX,CX,DX,DI
@@ -213,11 +235,13 @@ EDIT_NOTA PROC
     S_REG AX,BX,CX,DX
     PUSH DI
 
+    START_EDIT_NOTA:
+
     MOV DI,BX  ;offset da nota
     MOV BX, AX ;offset do aluno
     MOV CX,5
     XOR DL,DL  ;valor a ser guardado
-
+    
     INP_NOTA:MOV AH,01
         INT 21h
         CMP AL,13
@@ -241,6 +265,13 @@ EDIT_NOTA PROC
 
     LINHA
     END_INP_NOTA:
+    CMP DL,10
+    JNA OK   ;se maior que 10, pega a nota de novo
+        MOV AH,09
+        LEA DX,MSG10
+        INT 21h
+        JMP START_EDIT_NOTA
+    OK:
     MOV BYTE PTR [BX][DI], DL  ;nn importa qual matriz, é especificado que é uma matriz DB
 
     POP DI
@@ -254,6 +285,31 @@ EDIT_TABELA PROC
     ;saida na memoria
     S_REG AX,BX,CX,DX
     PUSH SI
+    PUSH DI
+
+    LEA SI,MSG15+7    ;impressao dos pesos na tabela
+    LEA DI,PESOS
+    PRINT MSG11
+    MOV CL,3
+    LEA DX,MSG12
+
+    PESOS_LOOP:
+        MOV AH,09
+        INT 21h     ;imprime mensagem atual (MSG12-MSG14)
+
+        MOV AH,01
+        INT 21h     ;pega o peso e guarda em PESOS
+        LINHA
+        AND AL,0Fh
+        MOV [DI],AL
+        OR AL,30h
+        MOV [SI],AL ;guarda o peso, pronto para impressao no topo da tabela
+
+        ADD DX,3
+        INC DI
+        ADD SI,3    ;prox espaço reservado para peso na impressao
+    DEC CL
+    JNZ PESOS_LOOP ;pergunta e guarda os pesos
 
     MOV CX,5      ;loop externo
     ;;;as linhas abaixo e acima devem ser MOV CX,5 e LEA AX,TABELA, se estao diferentes, é um teste
@@ -292,6 +348,7 @@ EDIT_TABELA PROC
         ADD AX,24     ;prox aluno
     LOOP INP_TABELA
 
+    POP DI
     POP SI
     R_REG AX,BX,CX,DX
     RET
@@ -303,61 +360,74 @@ IMP_TABELA PROC
 ; saida na tela 
     S_REG AX, BX, CX, DX 
 
+    CLR
     XOR BX, BX
 
-    MOV AH, 09 
-    LEA DX,TOPO
-    INT 21h
+    PRINT MSG15
+    PRINT TOPO
 
     ; impressao tabela inputada 
     MOV CH, 5
 
     EXTERN: 
-    XOR DI, DI
+        XOR DI, DI
 
-    ;ideia: nao colocar o $ no fim e sempre imprimir 19 caracteres para manter o mesmo espaço de txto
+        ;nao eh colocado o $ no fim para manter o mesmo espaço de txto, ja que o vigesimo caracter eh um $
 
-    MOV AH, 09 ; NOME
-    LEA DX, TABELA[BX][DI]
-    INT 21H 
+        MOV AH,02
+        MOV DL,"|"
+        INT 21h
 
-    MOV AH,02
-    MOV DL,20h ;imprime um espaço
-    INT 21h
+        MOV AH, 09 ; NOME
+        LEA DX, TABELA[BX][DI]
+        INT 21H 
 
-    MOV CL,4   ;imprime as 3 notas e a media
-    MOV DI,20  ;primeira nota
-        INTER: 
-            MOV DL, ' '
-            INT 21H 
+        MOV AH,02
+        MOV DL,20h ;imprime um espaço
+        INT 21h
 
-            MOV AH, 02 ; NOTA 
-            MOV DL, TABELA[BX][DI]
-            CMP DL,10
-            JNE NOT_TEN
+        MOV CL,4   ;imprime as 3 notas e a media
+        MOV DI,20  ;primeira nota
+            INTER: 
+                MOV DL, '|'
+                INT 21H 
 
-            ADD DL,27h ;imprime o 1
-            INT 21h
-            MOV DL,30h ;imprime o 0
-            INT 21h
-            JMP CONTINUE_INTER
+                MOV DL, TABELA[BX][DI]
+                CALL COR_NOTA
 
-            NOT_TEN:
-            PUSH DX
-                MOV DL," "
+                CMP DL,10
+                JNE NOT_TEN
+
+                MOV AH, 02
+                ADD DL,27h ;imprime o 1
                 INT 21h
-            POP DX
-            OR DL, 30H 
-            INT 21H 
+                MOV DL,30h ;imprime o 0
+                INT 21h
+                JMP CONTINUE_INTER
 
-            CONTINUE_INTER:
+                NOT_TEN:
+                PUSH DX
+                    MOV DL," "
+                    INT 21h
+                POP DX
+                OR DL, 30H 
+                INT 21H 
 
-            INC DI 
-            DEC CL 
-        JNZ INTER 
+                CONTINUE_INTER:
 
-    ADD BX, 24 
-    LINHA 
+                INC DI 
+                DEC CL 
+            JNZ INTER 
+
+        ADD BX, 24 
+        PUSH AX
+        PUSH DX
+        MOV AH,02
+        MOV DL,"|"
+        INT 21h
+        POP DX
+        POP AX
+        LINHA 
     DEC CH 
     JNZ EXTERN 
     
@@ -372,35 +442,51 @@ CALC_MEDIA PROC
     S_REG SI, BX, CX, DX 
     PUSH AX
 
-    MOV BX, AX ; offset do aluno que representa a linha que deve pego as notas a calcular a media 
+    MOV BX, AX  ;offset do aluno que representa a linha que deve pego as notas a calcular a media 
     XOR AX,AX
-    MOV SI, 20 ; posicionar na linha da nota 1 
-    MOV CX, 3 ; qnts notas devem ser adicionadas a soma da media 
+    MOV SI, 20  ;posicionar na linha da nota 1
+    LEA DI,PESOS;array de pesos
+    XOR DL,DL
+    MOV CX,3
 
     MED:
-        ADD AL, TABELA[BX][SI]
-        INC SI 
-    LOOP MED 
- 
-    MOV DL, 3
-    DIV DL
+        MOV AL,TABELA[BX][SI]   ;nota atual
+        MOV DH,[DI]             ;peso atual
+        MULT DH                 ;nota x * peso x
+        ADD DL,AL ;soma atual
+        INC SI    ;prox nota
+        INC DI    ;prox peso
+    LOOP MED
 
-    MOV TABELA[BX][SI], AL 
+    MOV AL,DL
+    SUB DI,3 ;retorna para peso da p1
+    XOR DL,DL
+
+    ADD DL,[DI]
+    ADD DL,[DI+1]
+    ADD DL,[DI+2] ;DL agora tem a soma dos pesos
+    XOR AH,AH
+    DIV DL        ;AH:AL/DL ->(P1*peso1+P2*peso2+P3*peso3)/(peso1+peso2+peso3)
+
+    MOV TABELA[BX][SI], AL      ;guarda a media ponderada na tabela, SI ja esta em 23 gracas ao loop
 
     POP AX
-    R_REG SI, BX, CX, DX  
+    R_REG SI, BX, CX, DX 
     RET
 CALC_MEDIA ENDP 
 
 CHEC_NOME PROC
     ;checa se o nome inputado esta na tabela
     ;entrada pelo teclado
-    ;saida em AX, offset do nome igual, retorna FFFFh se nao for igual a nenhum
+    ;saida em AX, offset do nome igual
     S_REG CX,DX,SI,DI
 
+    START_CHEC_NOME:
     MOV AH,09
     LEA DX,MSG5
     INT 21h
+
+    CLD
 
     LEA AX,TEMP
     CALL EDIT_NOME;pega nome para comparar
@@ -413,7 +499,7 @@ CHEC_NOME PROC
         PUSH SI
         PUSH DI
         MOV CX,19
-        REPE CMPSB ;enquanto forem iguais os caracteres, é scanneado
+        REPE CMPSB ;enquanto forem iguais os caracteres, é comparado
         OR CX,CX
         JZ ENCONTRADO
         POP DI
@@ -422,19 +508,93 @@ CHEC_NOME PROC
     DEC DL
     JNZ SEARCH
     
-    MOV AX,0FFFFh  ;se chegou aqui, nenhum é igual
-    PRINT MSG6
-    LINHA
-    JMP NAO_ENCONTRADO
+    CALL IMP_TABELA ;imprime tabela para a pessoa saber quais nomes tem
+    PRINT MSG6      ;se chegou aqui, nao tem o nome, recomeça procedimento
+    CALL REST_TEMP
+    JMP START_CHEC_NOME
 
     ENCONTRADO:
     POP DI
     POP SI          ;esses dois estao aqui para o nao dar problema com o RET
     MOV AX,SI
-    NAO_ENCONTRADO: ;usar um CMP para verificar se ax é FFFFh na hora de usar o endereço
 
     R_REG CX,DX,SI,DI
     RET
 CHEC_NOME ENDP
+
+REEDIT_NOTA PROC
+    ;permite a reedicao da nota de um aluno
+    ;entrada pleo teclado
+    ;saida na memoria
+    S_REG AX,BX,CX,DX
+
+    ERROR_REEDIT:
+    LINHA
+    CALL CHEC_NOME
+    PRINT MSG1
+    CALL EDIT_NOME  ;modifica o nome do aluno
+    PRINT MSG7
+    PUSH AX
+    MOV AH,01
+    INT 21h
+
+    CMP AL,33h
+    JG ERROR_REEDIT
+    CMP AL,30h
+    JL ERROR_REEDIT ;verifica se a resposta foi viavel
+
+    SUB AL,29       ;transforma numero da prova em offset para o EDIT NOTA (31h para 14h, 32h para 15h e 33h para 16h)
+    MOV BX,AX
+    XOR BH,BH       ;guarda offset da nota em BX para usar EDIT_NOTA
+    POP AX
+    LINHA
+    PRINT MSG8
+    CALL EDIT_NOTA
+    CALL CALC_MEDIA
+
+    R_REG AX,BX,CX,DX
+    RET
+REEDIT_NOTA ENDP
+
+COR_NOTA PROC
+    ;decide se eh para colorir a nota de verde, vermelho ou nao colore, usado em IMP TABELA
+    ;entrada em DL, a nota
+    ;saida na cor dos 2 proximos caracteres
+    S_REG AX,BX,CX,DX
+
+    MOV AH,09     ;Escolher cor do texto
+    MOV AL,0      ;caracter a imprimir (sera substituido entao nao importa nesse caso)
+    MOV CX,2      ;numero de caracters a serem coloridos
+
+    CMP DL,5
+    JB ABAIXO_MEDIA
+    mov bl,2     ;verde se aprovado
+    JMP COLORE
+    ABAIXO_MEDIA:
+    mov bl,0Ch   ;vermelho-claro se reprovado
+    COLORE:INT 10h
+    NAO_COLORE:
+
+    R_REG AX,BX,CX,DX
+    RET
+COR_NOTA ENDP
+
+REST_TEMP PROC
+    ;restaura TEMP para que CHEC_NOTA funcione corretamente
+    ;sem entrada
+    ;sem saida
+    S_REG AX,BX,CX,DX
+
+    LEA BX,TEMP
+    MOV AL,0
+    MOV CX,19
+    LOOP_REST_TEMP:
+        MOV BYTE PTR [BX],AL
+        INC BX
+    LOOP LOOP_REST_TEMP
+
+    R_REG AX,BX,CX,DX
+    RET
+REST_TEMP ENDP
 
 END MAIN
